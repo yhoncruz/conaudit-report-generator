@@ -118,19 +118,19 @@ def procesar_y_crear_hoja_glosas(excel, base_dir, reporte_filename):
                 # Q Reclamaciones
                 cell = ws.Cells(current_row, 3)
                 cell.Value = int(row_data["Q_Reclamaciones"])
-                cell.NumberFormat = "#,##0"
+                cell.NumberFormatLocal = "#.##0"
                 cell.HorizontalAlignment = -4152
                 
                 # Q items
                 cell = ws.Cells(current_row, 4)
                 cell.Value = int(row_data["Q_items"])
-                cell.NumberFormat = "#,##0"
+                cell.NumberFormatLocal = "#.##0"
                 cell.HorizontalAlignment = -4152
                 
                 # % participacion
                 cell = ws.Cells(current_row, 5)
                 cell.Value = float(row_data["% participacion"])
-                cell.NumberFormat = "0.00%"
+                cell.NumberFormatLocal = "0,00%"
                 cell.HorizontalAlignment = -4152
             
             # Fila de Total general
@@ -143,18 +143,18 @@ def procesar_y_crear_hoja_glosas(excel, base_dir, reporte_filename):
             total_rec = ips_rows["reclamacionID"].nunique()
             cell_total_rec = ws.Cells(current_row, 3)
             cell_total_rec.Value = int(total_rec)
-            cell_total_rec.NumberFormat = "#,##0"
+            cell_total_rec.NumberFormatLocal = "#.##0"
             cell_total_rec.HorizontalAlignment = -4152
             
             total_items = ips_data["Q_items"].sum()
             cell_total_items = ws.Cells(current_row, 4)
             cell_total_items.Value = int(total_items)
-            cell_total_items.NumberFormat = "#,##0"
+            cell_total_items.NumberFormatLocal = "#.##0"
             cell_total_items.HorizontalAlignment = -4152
             
             cell_total_pct = ws.Cells(current_row, 5)
             cell_total_pct.Value = 1.0
-            cell_total_pct.NumberFormat = "0.00%"
+            cell_total_pct.NumberFormatLocal = "0,00%"
             cell_total_pct.HorizontalAlignment = -4152
             
             total_range = ws.Range(ws.Cells(current_row, 1), ws.Cells(current_row, 5))
@@ -178,8 +178,12 @@ def procesar_y_crear_hoja_glosas(excel, base_dir, reporte_filename):
             current_row += 3 # Espaciado
             
         # Formatear anchos de columnas
-        ws.Columns(2).WrapText = False
-        ws.Columns.AutoFit()
+        ws.Columns(1).ColumnWidth = 12
+        ws.Columns(2).ColumnWidth = 85
+        ws.Columns(2).WrapText = True
+        ws.Columns(3).ColumnWidth = 15
+        ws.Columns(4).ColumnWidth = 10
+        ws.Columns(5).ColumnWidth = 15
         
         wb.Save()
         return wb, ws, ips_ranges
@@ -478,12 +482,14 @@ def main():
                                 else:
                                     pic_g.Top = 150
                                     
-                                max_width = pres.PageSetup.SlideWidth * 0.95
+                                # Max width to avoid green bar on the right side
+                                max_width = 760
                                 if pic_g.Width > max_width:
                                     pic_g.LockAspectRatio = True
                                     pic_g.Width = max_width
                                     
-                                pic_g.Left = (pres.PageSetup.SlideWidth - pic_g.Width) / 2
+                                # Center the table image within the white area (from 40 to 800 pixels)
+                                pic_g.Left = 40 + (760 - pic_g.Width) / 2
                             else:
                                 print(f"Fallo al pegar imagen de glosas para {razon}")
                         else:
