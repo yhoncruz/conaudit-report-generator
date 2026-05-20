@@ -173,17 +173,13 @@ def procesar_y_crear_hoja_glosas(excel, base_dir, reporte_filename):
                 except:
                     pass
             
-            ips_ranges[ips] = (start_table_row, end_table_row)
+            ips_ranges[ips] = (header_row_idx, end_table_row)
             
             current_row += 3 # Espaciado
             
         # Formatear anchos de columnas
-        ws.Columns(1).ColumnWidth = 15
-        ws.Columns(2).ColumnWidth = 65
-        ws.Columns(2).WrapText = True
-        ws.Columns(3).ColumnWidth = 18
-        ws.Columns(4).ColumnWidth = 12
-        ws.Columns(5).ColumnWidth = 15
+        ws.Columns(2).WrapText = False
+        ws.Columns.AutoFit()
         
         wb.Save()
         return wb, ws, ips_ranges
@@ -513,8 +509,10 @@ def main():
         for file_idx, g_info in glosas_info.items():
             try: g_info[0].Close(SaveChanges=True)
             except: pass
-        ppt.Quit()
-        excel.Quit()
+        try: ppt.Quit()
+        except: pass
+        try: excel.Quit()
+        except: pass
 
 if __name__ == "__main__":
     main()
