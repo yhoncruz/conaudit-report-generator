@@ -1,6 +1,198 @@
 import win32com.client
 import os
 import time
+import pandas as pd
+
+def rgb_to_int(r, g, b):
+    return r + (g << 8) + (b << 16)
+
+def procesar_y_crear_hoja_glosas(excel, base_dir, reporte_filename):
+    glosas_filename = reporte_filename.replace("Reporte_Cierre_Paquete", "GLOSAS_RECLAMACIONES")
+    glosas_path = os.path.join(base_dir, glosas_filename)
+    
+    if not os.path.exists(glosas_path):
+        print(f"Advertencia: No se encontró el archivo de glosas {glosas_filename}")
+        return None
+        
+    print(f"Procesando glosas para {glosas_filename}...")
+    
+    try:
+        df = pd.read_excel(glosas_path, sheet_name="GLOSAS_RECLAMACIONES")
+    except Exception as e:
+        print(f"Error al leer hoja GLOSAS_RECLAMACIONES de {glosas_filename}: {e}")
+        return None
+        
+    # Limpieza de datos
+    df = df.dropna(subset=["IPS", "reclamacionID", "Codigo_glosa"])
+    df["IPS"] = df["IPS"].astype(str).str.strip()
+    df["Codigo_glosa"] = df["Codigo_glosa"].astype(str).str.strip()
+    df["Descripcion_glosa"] = df["Descripcion_glosa"].fillna("").astype(str).str.strip()
+    df["reclamacionID"] = df["reclamacionID"].astype(int)
+    
+    # Calcular estadísticas agrupando por IPS, código de glosa y descripción
+    agg = df.groupby(["IPS", "Codigo_glosa", "Descripcion_glosa"]).agg(
+        Q_Reclamaciones=("reclamacionID", "nunique"),
+        Q_items=("reclamacionID", "count")
+    ).reset_index()
+    
+    ips_totals = agg.groupby("IPS")["Q_items"].transform("sum")
+    agg["% participacion"] = agg["Q_items"] / ips_totals
+    
+    # Ordenar por IPS (alfabético) y luego por % participacion de mayor a menor (descendente)
+    agg = agg.sort_values(by=["IPS", "% participacion"], ascending=[True, False])
+    
+    wb = excel.Workbooks.Open(glosas_path)
+    
+    try:
+        sheet_name = "TD_GLOSAS_RECLAMACIONES"
+        excel.DisplayAlerts = False
+        try:
+            ws = wb.Sheets(sheet_name)
+            ws.Delete()
+        except:
+            pass
+        excel.DisplayAlerts = True
+            
+        ws = wb.Sheets.Add(After=wb.Sheets(wb.Sheets.Count))
+        ws.Name = sheet_name
+        
+        ws.Activate()
+        excel.ActiveWindow.DisplayGridlines = True
+        
+        # Constantes de diseño
+        header_color = rgb_to_int(217, 226, 243) # azul/gris claro (RGB 217, 226, 243)
+        border_color = rgb_to_int(192, 192, 192) # gris claro (RGB 192, 192, 192)
+        
+        unique_ips = sorted(agg["IPS"].unique())
+        ips_ranges = {}
+        
+        current_row = 1
+        for ips in unique_ips:
+            ips_data = agg[agg["IPS"] == ips]
+            if len(ips_data) == 0:
+                continue
+                
+            start_table_row = current_row
+            
+            # Fila 1: Filtro IPS
+            ws.Cells(current_row, 1).Value = "IPS"
+            ws.Cells(current_row, 1).Font.Bold = True
+            ws.Cells(current_row, 2).Value = ips
+            ws.Cells(current_row, 2).Font.Bold = True
+            
+            # Bordes para el filtro
+            filter_range = ws.Range(ws.Cells(current_row, 1), ws.Cells(current_row, 2))
+            for b_id in [7, 8, 9, 10]:
+                filter_range.Borders(b_id).LineStyle = 1
+                filter_range.Borders(b_id).Weight = 2
+                filter_range.Borders(b_id).Color = border_color
+            
+            current_row += 2 # Fila vacía, luego fila de cabecera
+            header_row_idx = current_row
+            
+            # Cabeceras de la tabla
+            headers = ["Codigo_glosa", "Descripcion_glosa", "Q Reclamaciones", "Q items", "% participacion"]
+            for col_idx, h in enumerate(headers, 1):
+                ws.Cells(current_row, col_idx).Value = h
+            
+            # Formatear cabecera
+            header_range = ws.Range(ws.Cells(current_row, 1), ws.Cells(current_row, 5))
+            header_range.Font.Bold = True
+            header_range.Interior.Color = header_color
+            header_range.HorizontalAlignment = -4108 # xlCenter
+            
+            # Escribir las filas de datos ordenadas
+            for _, row_data in ips_data.iterrows():
+                current_row += 1
+                
+                # Codigo_glosa
+                cell = ws.Cells(current_row, 1)
+                cell.Value = str(row_data["Codigo_glosa"])
+                cell.HorizontalAlignment = -4108
+                
+                # Descripcion_glosa
+                cell = ws.Cells(current_row, 2)
+                cell.Value = str(row_data["Descripcion_glosa"])
+                cell.HorizontalAlignment = -4131
+                
+                # Q Reclamaciones
+                cell = ws.Cells(current_row, 3)
+                cell.Value = int(row_data["Q_Reclamaciones"])
+                cell.NumberFormat = "#,##0"
+                cell.HorizontalAlignment = -4152
+                
+                # Q items
+                cell = ws.Cells(current_row, 4)
+                cell.Value = int(row_data["Q_items"])
+                cell.NumberFormat = "#,##0"
+                cell.HorizontalAlignment = -4152
+                
+                # % participacion
+                cell = ws.Cells(current_row, 5)
+                cell.Value = float(row_data["% participacion"])
+                cell.NumberFormat = "0.00%"
+                cell.HorizontalAlignment = -4152
+            
+            # Fila de Total general
+            current_row += 1
+            
+            ws.Cells(current_row, 1).Value = "Total general"
+            ws.Cells(current_row, 2).Value = ""
+            
+            ips_rows = df[df["IPS"] == ips]
+            total_rec = ips_rows["reclamacionID"].nunique()
+            cell_total_rec = ws.Cells(current_row, 3)
+            cell_total_rec.Value = int(total_rec)
+            cell_total_rec.NumberFormat = "#,##0"
+            cell_total_rec.HorizontalAlignment = -4152
+            
+            total_items = ips_data["Q_items"].sum()
+            cell_total_items = ws.Cells(current_row, 4)
+            cell_total_items.Value = int(total_items)
+            cell_total_items.NumberFormat = "#,##0"
+            cell_total_items.HorizontalAlignment = -4152
+            
+            cell_total_pct = ws.Cells(current_row, 5)
+            cell_total_pct.Value = 1.0
+            cell_total_pct.NumberFormat = "0.00%"
+            cell_total_pct.HorizontalAlignment = -4152
+            
+            total_range = ws.Range(ws.Cells(current_row, 1), ws.Cells(current_row, 5))
+            total_range.Font.Bold = True
+            total_range.Interior.Color = header_color
+            
+            end_table_row = current_row
+            
+            # Aplicar bordes a toda la tabla
+            table_range = ws.Range(ws.Cells(header_row_idx, 1), ws.Cells(end_table_row, 5))
+            for b_id in range(7, 13):
+                try:
+                    table_range.Borders(b_id).LineStyle = 1
+                    table_range.Borders(b_id).Weight = 2 # xlThin
+                    table_range.Borders(b_id).Color = border_color
+                except:
+                    pass
+            
+            ips_ranges[ips] = (start_table_row, end_table_row)
+            
+            current_row += 3 # Espaciado
+            
+        # Formatear anchos de columnas
+        ws.Columns(1).ColumnWidth = 15
+        ws.Columns(2).ColumnWidth = 65
+        ws.Columns(2).WrapText = True
+        ws.Columns(3).ColumnWidth = 18
+        ws.Columns(4).ColumnWidth = 12
+        ws.Columns(5).ColumnWidth = 15
+        
+        wb.Save()
+        return wb, ws, ips_ranges
+        
+    except Exception as e:
+        print(f"Error al estructurar hoja en {glosas_filename}: {e}")
+        try: wb.Close(SaveChanges=False)
+        except: pass
+        return None
 
 def main():
     base_dir = os.path.abspath(os.path.dirname(__file__))
@@ -13,7 +205,7 @@ def main():
     ]
     
     pptx_path = os.path.join(base_dir, 'Presentación Reunión de Seguimiento.pptx')
-    out_pptx_path = os.path.join(base_dir, 'Presentacion_Actualizada_Fase3.pptx')
+    out_pptx_path = os.path.join(base_dir, 'Presentacion_Actualizada_Fase4.pptx')
 
     if os.path.exists(out_pptx_path):
         try: os.remove(out_pptx_path)
@@ -27,6 +219,7 @@ def main():
     ppt = win32com.client.Dispatch("PowerPoint.Application")
     
     workbooks = []
+    glosas_info = {}
     try:
         pres = ppt.Presentations.Open(pptx_path, WithWindow=False)
         
@@ -59,6 +252,11 @@ def main():
                 
             wb = excel.Workbooks.Open(file_path)
             workbooks.append(wb)
+            
+            # Procesar el archivo de glosas correspondiente de forma dinámica
+            info_glosas = procesar_y_crear_hoja_glosas(excel, base_dir, filename)
+            if info_glosas:
+                glosas_info[file_idx] = info_glosas
             
             try:
                 ws = wb.Sheets("Resumen por Razón Social")
@@ -230,6 +428,71 @@ def main():
             ws_temp.Delete()
             excel.DisplayAlerts = True
             
+            # --- 2. DIAPOSITIVA DE MOTIVOS DE GLOSA (Nueva) ---
+            for file_idx, info in enumerate(file_info):
+                if file_idx in data_map[razon] and file_idx in glosas_info:
+                    wb_g, ws_g, ips_ranges = glosas_info[file_idx]
+                    
+                    if razon in ips_ranges:
+                        start_row, end_row = ips_ranges[razon]
+                        print(f"Copiando tabla de glosas para {razon} desde {excel_files[file_idx]} (filas {start_row}-{end_row})")
+                        
+                        copy_range_glosas = ws_g.Range(ws_g.Cells(start_row, 1), ws_g.Cells(end_row, 5))
+                        
+                        success_g = False
+                        for attempt in range(5):
+                            try:
+                                copy_range_glosas.CopyPicture(Appearance=1, Format=2)
+                                success_g = True
+                                break
+                            except:
+                                time.sleep(1)
+                                
+                        if success_g:
+                            slide_range_g = pres.Slides(1).Duplicate()
+                            slide_g = slide_range_g(1)
+                            slide_g.MoveTo(pres.Slides.Count)
+                            
+                            title_text_g = f"Reporte de Gestión de motivos de glosa\n{razon}"
+                            title_shape_g = None
+                            
+                            for shape in slide_g.Shapes:
+                                if shape.HasTextFrame and "Resumen Ejecutivo" in shape.TextFrame.TextRange.Text:
+                                    shape.TextFrame.TextRange.Text = title_text_g
+                                    title_shape_g = shape
+                                    break
+                            
+                            if not title_shape_g and slide_g.Shapes.HasTitle:
+                                slide_g.Shapes.Title.TextFrame.TextRange.Text = title_text_g
+                                title_shape_g = slide_g.Shapes.Title
+                                
+                            paste_success_g = False
+                            for attempt in range(5):
+                                try:
+                                    slide_g.Shapes.Paste()
+                                    paste_success_g = True
+                                    break
+                                except:
+                                    time.sleep(1)
+                                    
+                            if paste_success_g:
+                                pic_g = slide_g.Shapes(slide_g.Shapes.Count)
+                                if title_shape_g:
+                                    pic_g.Top = title_shape_g.Top + title_shape_g.Height + 30
+                                else:
+                                    pic_g.Top = 150
+                                    
+                                max_width = pres.PageSetup.SlideWidth * 0.95
+                                if pic_g.Width > max_width:
+                                    pic_g.LockAspectRatio = True
+                                    pic_g.Width = max_width
+                                    
+                                pic_g.Left = (pres.PageSetup.SlideWidth - pic_g.Width) / 2
+                            else:
+                                print(f"Fallo al pegar imagen de glosas para {razon}")
+                        else:
+                            print(f"Fallo al copiar imagen de glosas para {razon}")
+            
             slide_index += 1
 
         # Eliminar la plantilla limpia al final
@@ -246,6 +509,9 @@ def main():
         except: pass
         for wb in workbooks:
             try: wb.Close(SaveChanges=False)
+            except: pass
+        for file_idx, g_info in glosas_info.items():
+            try: g_info[0].Close(SaveChanges=True)
             except: pass
         ppt.Quit()
         excel.Quit()
