@@ -1,0 +1,20 @@
+# Python cache and temporary files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Windows system files
+desktop.ini
+Thumbs.db
+
+# Office temporary files (created when a document is open)
+~$*
+
+# Generated presentations / Output files
+# (We keep the original templates if needed, but ignore the generated results)
+Presentacion_Actualizada*.pptx
+prueba_duplicado.pptx
+
+# If you do not want to track large Excel data files in Git, you can uncomment the line below:
+# *.xlsx
