@@ -179,8 +179,8 @@ def procesar_y_crear_hoja_glosas(excel, base_dir, reporte_filename):
             
         # Formatear anchos de columnas
         ws.Columns(1).ColumnWidth = 12
-        ws.Columns(2).ColumnWidth = 85
-        ws.Columns(2).WrapText = True
+        ws.Columns(2).ColumnWidth = 80
+        ws.Columns(2).WrapText = False
         ws.Columns(3).ColumnWidth = 15
         ws.Columns(4).ColumnWidth = 10
         ws.Columns(5).ColumnWidth = 15
